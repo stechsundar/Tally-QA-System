@@ -14,3 +14,9 @@ tallyenv/
 .env
 tally_docs.json
 tally_chroma_db/
+tally_chroma_db_*/
+*.txt
+verify_qa.py
+inspect_pdfs.py
+debug_rag.py
+setup_pdf_only.py

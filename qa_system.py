@@ -4,13 +4,14 @@ Run this SECOND to create the vector store from scraped data
 """
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_anthropic import ChatAnthropic
 from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
+from langchain_community.document_loaders import PyPDFLoader
 import json
 import os
 from dotenv import load_dotenv
@@ -114,10 +115,10 @@ class TallyQASystem:
             temperature=0
         )
         
-        # Create retriever
+        # Create retriever with broader search
         retriever = self.vectorstore.as_retriever(
-            search_type="similarity",
-            search_kwargs={"k": 5}
+            search_type="mmr",
+            search_kwargs={"k": 20, "fetch_k": 60}
         )
         
         # Create prompt template
@@ -136,39 +137,144 @@ Helpful Answer:"""
         
         prompt = PromptTemplate.from_template(template)
         
-        # Format documents function
-        def format_docs(docs):
-            return "\n\n".join(doc.page_content for doc in docs)
+        # Format documents function with source prioritization
+        self.format_docs_node = self._format_docs
         
         # Create chain
         self.qa_chain = (
-            {"context": retriever | format_docs, "question": RunnablePassthrough()}
+            {"context": retriever | self._format_docs, "question": RunnablePassthrough()}
             | prompt
             | llm
             | StrOutputParser()
         )
         
-        # Store retriever for getting sources
+        # Store components for hybrid access
+        self.prompt = prompt
+        self.llm = llm
         self.retriever = retriever
         
-        print("✓ QA chain created with Claude")
-        return self.qa_chain
+        # Original chain for backward compatibility
+        self.qa_chain = (
+            {"context": retriever | self._format_docs, "question": RunnablePassthrough()}
+            | prompt
+            | llm
+            | StrOutputParser()
+        )
     
+    def _format_docs(self, docs):
+        """Sort docs to put PDFs first (Knowledge Boost)"""
+        pdfs = [d for d in docs if d.metadata.get('source', '').lower().endswith('.pdf')]
+        others = [d for d in docs if not d.metadata.get('source', '').lower().endswith('.pdf')]
+        
+        sorted_docs = pdfs + others
+        return "\n\n".join(f"[{doc.metadata.get('title', 'Doc')}]: {doc.page_content}" for doc in sorted_docs)
+
     def ask(self, question):
-        """Ask a question"""
+        """Ask a question with Hybrid/Ensemble Retrieval"""
         if self.qa_chain is None:
             raise ValueError("QA chain not initialized!")
         
-        # Get answer
-        answer = self.qa_chain.invoke(question)
+        # 1. Ultra-Deep Search + Metadata Filtering
+        # We try to get the best matches globally AND specifically from PDFs
+        try:
+             # Global search
+             global_docs = self.vectorstore.similarity_search(question, k=50)
+             
+             # Targeted PDF Search (Chroma where filter)
+             # Note: Using absolute path pattern or simple match if possible
+             # But since we saw they are in 'pdf_docs/', we'll use a larger scan and filter
+             pdf_docs = [d for d in self.vectorstore.similarity_search(question, k=200) 
+                         if d.metadata.get('source', '').lower().endswith('.pdf')]
+             
+             # Combined pool
+             combined_pool = pdf_docs + global_docs
+        except:
+             combined_pool = self.vectorstore.similarity_search(question, k=50)
         
-        # Get source documents
-        source_docs = self.retriever.invoke(question)
+        # De-duplicate and prioritize PDFs
+        final_docs = []
+        seen_chunks = set()
+        
+        # Priority 1: PDFs
+        for d in combined_pool:
+            if d.metadata.get('source', '').lower().endswith('.pdf'):
+                if d.page_content[:200] not in seen_chunks:
+                    final_docs.append(d)
+                    seen_chunks.add(d.page_content[:200])
+        
+        # Priority 2: Standard docs (until we hit 15-20 docs)
+        for d in combined_pool:
+            if not d.metadata.get('source', '').lower().endswith('.pdf'):
+                if d.page_content[:200] not in seen_chunks:
+                    final_docs.append(d)
+                    seen_chunks.add(d.page_content[:200])
+                    if len(final_docs) >= 20: break
+                    
+        # Limit context
+        context_docs = final_docs[:15]
+        context_text = self._format_docs(context_docs)
+        
+        # 3. Targeted LLM Call
+        from langchain_core.output_parsers import StrOutputParser
+        chain = self.prompt | self.llm | StrOutputParser()
+        answer = chain.invoke({"context": context_text, "question": question})
         
         return {
             'answer': answer,
-            'sources': [doc.metadata for doc in source_docs[:3]]  # Top 3 sources
+            'sources': [doc.metadata for doc in final_docs[:5]]
         }
+
+    def add_pdf(self, pdf_path):
+        """Load a PDF and add it to the vector store"""
+        print(f"\nProcessing PDF: {pdf_path}")
+        loader = PyPDFLoader(pdf_path)
+        documents = loader.load()
+        
+        # Add metadata
+        for doc in documents:
+            doc.metadata['source'] = pdf_path
+            doc.metadata['title'] = os.path.basename(pdf_path)
+            
+        # Split
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200
+        )
+        splits = text_splitter.split_documents(documents)
+        
+        # Add to existing vector store
+        if self.vectorstore is None:
+            self.load_vectorstore()
+            
+        self.vectorstore.add_documents(splits)
+        print(f"✓ Added {len(splits)} chunks from {pdf_path} to vector store")
+        return len(splits)
+
+    def batch_add_pdfs(self, directory='pdf_docs'):
+        """Batch add all PDFs from a directory"""
+        if not os.path.exists(directory):
+            print(f"Directory {directory} not found.")
+            return
+        
+        pdf_files = [f for f in os.listdir(directory) if f.lower().endswith('.pdf')]
+        if not pdf_files:
+            print(f"No PDF files found in {directory}.")
+            return
+            
+        print(f"\n" + "="*80)
+        print(f"Batch Processing {len(pdf_files)} PDFs")
+        print("="*80)
+        
+        total_chunks = 0
+        for pdf_file in pdf_files:
+            pdf_path = os.path.join(directory, pdf_file)
+            try:
+                chunks = self.add_pdf(pdf_path)
+                total_chunks += chunks
+            except Exception as e:
+                print(f"Error processing {pdf_file}: {e}")
+        
+        print(f"\n✓ Finished batch processing. Added total of {total_chunks} chunks.")
 
 def main():
     """Create vector store - run this once after scraping"""

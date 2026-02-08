@@ -2,7 +2,9 @@ import streamlit as st
 import os
 from dotenv import load_dotenv
 from qa_system import TallyQASystem
+from analytics_engine import TallyAnalyticsEngine
 import time
+import tempfile
 
 # --- Page Config ---
 st.set_page_config(
@@ -29,12 +31,11 @@ st.markdown("""
     .main-header {
         background: rgba(255, 255, 255, 0.05);
         backdrop-filter: blur(10px);
-        padding: 2rem;
+        padding: 1.5rem;
         border-radius: 1rem;
         border: 1px solid rgba(255, 255, 255, 0.1);
         margin-bottom: 2rem;
         text-align: center;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     }
     
     .main-header h1 {
@@ -42,182 +43,154 @@ st.markdown("""
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         font-weight: 700;
-        font-size: 2.5rem;
+        font-size: 2.2rem;
         margin: 0;
     }
     
-    .stChatMessage {
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 24px;
+        background-color: transparent;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: rgba(255, 255, 255, 0.05);
+        border-radius: 8px 8px 0 0;
+        gap: 1px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        color: #94a3b8;
+    }
+
+    .stTabs [aria-selected="true"] {
+        background-color: rgba(59, 130, 246, 0.2);
+        color: #3b82f6 !important;
+        border-bottom: 2px solid #3b82f6 !important;
+    }
+    
+    .status-card {
         background: rgba(255, 255, 255, 0.03);
-        border-radius: 12px;
-        padding: 1.5rem;
+        padding: 1rem;
+        border-radius: 10px;
         border: 1px solid rgba(255, 255, 255, 0.05);
         margin-bottom: 1rem;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-    }
-    
-    .stChatInputContainer {
-        border-radius: 15px !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        background: rgba(15, 23, 42, 0.8) !important;
-        backdrop-filter: blur(20px);
-    }
-    
-    /* Sidebar styling */
-    section[data-testid="stSidebar"] {
-        background-color: rgba(15, 23, 42, 0.95);
-        border-right: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    
-    .source-card {
-        background: rgba(255, 255, 255, 0.05);
-        padding: 10px;
-        border-radius: 8px;
-        border-left: 4px solid #3b82f6;
-        margin-top: 10px;
-        font-size: 0.85rem;
-    }
-    
-    .source-title {
-        font-weight: 600;
-        color: #3b82f6;
-    }
-    
-    /* Custom Scrollbar */
-    ::-webkit-scrollbar {
-        width: 8px;
-    }
-    ::-webkit-scrollbar-track {
-        background: rgba(0, 0, 0, 0.1);
-    }
-    ::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 4px;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # --- Initialization ---
 @st.cache_resource
-def get_qa_system():
+def get_systems():
     load_dotenv()
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        return None, "Error: ANTHROPIC_API_KEY not found in .env"
+        return None, None, "Error: ANTHROPIC_API_KEY not found in .env"
     
     try:
         qa_system = TallyQASystem()
         qa_system.load_vectorstore()
         qa_system.create_qa_chain(api_key)
-        return qa_system, None
+        
+        analytics_engine = TallyAnalyticsEngine()
+        
+        return qa_system, analytics_engine, None
     except Exception as e:
-        return None, f"Error initializing system: {str(e)}"
+        return None, None, f"Error initializing systems: {str(e)}"
 
-# --- UI Components ---
-def show_header():
-    st.markdown("""
-        <div class="main-header">
-            <h1>🎯 Tally Expert AI</h1>
-            <p style="color: #94a3b8; font-size: 1.1rem; margin-top: 0.5rem;">
-                Your intelligent companion for all things Tally.ERP 9 and TallyPrime.
-            </p>
-        </div>
-    """, unsafe_allow_html=True)
-
-def show_sidebar(qa_system):
+# --- UI Functions ---
+def show_sidebar(qa_system, analytics_engine):
     with st.sidebar:
         st.image("https://www.tallysolutions.com/wp-content/uploads/2021/08/tally-logo.png", width=150)
-        st.markdown("### System Status")
-        if qa_system:
-            st.success("✅ Engine Online")
-            st.info("📚 Connected to Tally Knowledge Base")
-        else:
-            st.error("❌ Engine Offline")
+        st.markdown("### 🎛️ Control Panel")
+        
+        st.markdown("### 💾 Data Source")
+        uploaded_csv = st.file_uploader("Upload Tally CSV Export", type="csv", key="data_uploader")
+        if uploaded_csv:
+            success, msg = analytics_engine.load_csv(uploaded_csv)
+            if success:
+                st.success(f"✅ Data Active: {msg}")
+            else:
+                st.error(msg)
         
         st.markdown("---")
-        st.markdown("### 💡 Tips")
-        st.write("• Ask about balance sheets, GST, or invoices.")
-        st.write("• Be specific for better step-by-step guides.")
-        st.write("• The AI learns from Tally documentation.")
-        
-        if st.button("Clear Chat History", use_container_width=True):
+        if st.button("🗑️ Clear Chat History", use_container_width=True):
             st.session_state.messages = []
             st.rerun()
 
-# --- Main Logic ---
+# --- Main App ---
 def main():
-    show_header()
+    st.markdown('<div class="main-header"><h1>🎯 Tally Expert AI</h1></div>', unsafe_allow_html=True)
     
-    qa_system, error = get_qa_system()
-    show_sidebar(qa_system)
+    qa_system, analytics_engine, error = get_systems()
+    show_sidebar(qa_system, analytics_engine)
     
     if error:
         st.error(error)
-        st.info("Please ensure you've run the scraper and vector store setup steps first.")
         return
 
-    # Initialize chat history
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+    tab1, tab2 = st.tabs(["📚 Knowledge Base", "📊 Data Analytics"])
 
-    # Display chat messages
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-            if "sources" in message and message["sources"]:
-                with st.expander("📚 Sources"):
-                    for src in message["sources"]:
-                        st.markdown(f"""
-                            <div class="source-card">
-                                <div class="source-title">{src.get('title', 'Unknown')}</div>
-                                <div style="color: #94a3b8;">{src.get('source', '')}</div>
-                            </div>
-                        """, unsafe_allow_html=True)
+    with tab1:
+        st.markdown("### Ask about Tally Features & Processes")
+        # Initialize history for KB
+        if "kb_messages" not in st.session_state:
+            st.session_state.kb_messages = []
 
-    # Chat input
-    if prompt := st.chat_input("How can I help you with Tally today?"):
-        # Add user message to history
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        # Display history
+        for msg in st.session_state.kb_messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
 
-        # Generate response
-        with st.chat_message("assistant"):
-            message_placeholder = st.empty()
-            message_placeholder.markdown("🤔 *Thinking...*")
+        if prompt := st.chat_input("How do I enable BOM in TallyPrime?", key="kb_input"):
+            st.session_state.kb_messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
             
-            try:
-                result = qa_system.ask(prompt)
-                full_response = result['answer']
-                sources = result.get('sources', [])
+            with st.chat_message("assistant"):
+                with st.spinner("Consulting documentation..."):
+                    result = qa_system.ask(prompt)
+                    ans = result['answer']
+                    st.markdown(ans)
+                    if result['sources']:
+                        with st.expander("🔍 Sources"):
+                            for s in result['sources']:
+                                st.write(f"- **{s.get('title')}**")
+                    st.session_state.kb_messages.append({"role": "assistant", "content": ans})
+
+    with tab2:
+        st.markdown("### Query your Tally Data (CSV)")
+        if analytics_engine.df is None:
+            st.info("💡 Please upload a CSV file in the sidebar to start data analysis.")
+            st.markdown("""
+            **Example questions you can ask once data is uploaded:**
+            - What is the total revenue for the last quarter?
+            - Which items have the lowest stock levels?
+            - List the top 5 customers by voucher value.
+            """)
+        else:
+            summary = analytics_engine.get_summary()
+            st.markdown(f"**Loaded:** {summary['rows']} rows | **Columns:** {', '.join(summary['columns'])}")
+            with st.expander("👀 Data Preview"):
+                st.dataframe(summary['preview'], use_container_width=True)
+
+            if "data_messages" not in st.session_state:
+                st.session_state.data_messages = []
+
+            for msg in st.session_state.data_messages:
+                with st.chat_message(msg["role"]):
+                    st.markdown(msg["content"])
+
+            if data_prompt := st.chat_input("Show me a summary of sales by ledger", key="data_input"):
+                st.session_state.data_messages.append({"role": "user", "content": data_prompt})
+                with st.chat_message("user"):
+                    st.markdown(data_prompt)
                 
-                # Simulate typing effect
-                typed_msg = ""
-                for chunk in full_response.split():
-                    typed_msg += chunk + " "
-                    message_placeholder.markdown(typed_msg + "▌")
-                    time.sleep(0.02)
-                
-                message_placeholder.markdown(full_response)
-                
-                if sources:
-                    with st.expander("📚 Sources"):
-                        for src in sources:
-                            st.markdown(f"""
-                                <div class="source-card">
-                                    <div class="source-title">{src.get('title', 'Unknown')}</div>
-                                    <div style="color: #94a3b8;">{src.get('source', '')}</div>
-                                </div>
-                            """, unsafe_allow_html=True)
-                
-                # Add assistant response to history
-                st.session_state.messages.append({
-                    "role": "assistant", 
-                    "content": full_response,
-                    "sources": sources
-                })
-                
-            except Exception as e:
-                st.error(f"Error generating response: {str(e)}")
+                with st.chat_message("assistant"):
+                    with st.spinner("Analyzing data..."):
+                        ans = analytics_engine.ask(data_prompt)
+                        st.markdown(ans)
+                        st.session_state.data_messages.append({"role": "assistant", "content": ans})
 
 if __name__ == "__main__":
     main()
