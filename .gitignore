@@ -1,0 +1,16 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+tallyenv/
+
+# Data and Secret
+.env
+tally_docs.json
+tally_chroma_db/
