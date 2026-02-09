@@ -5,18 +5,30 @@ build/
 dist/
 wheels/
 *.egg-info
+*.spec
+
+# Node/Frontend
+node_modules/
+.DS_Store
 
 # Virtual environments
 .venv
 tallyenv/
+env/
+venv/
 
-# Data and Secret
+# AI/Data
 .env
 tally_docs.json
 tally_chroma_db/
 tally_chroma_db_*/
-*.txt
+
+# Temporary/Scripts
 verify_qa.py
 inspect_pdfs.py
 debug_rag.py
 setup_pdf_only.py
+
+# Keep these txt files
+!tally-site-urls.txt
+!requirements.txt
