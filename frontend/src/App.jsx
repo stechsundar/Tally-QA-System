@@ -158,13 +158,16 @@ function App() {
     const label = getAppLabel();
     const config = subdomainsData[label] || null;
 
-    // This is the pattern you asked for:
+    // Unified Router:
+    // If we have a custom config for this label, use it.
+    // Otherwise, check for special dashboard routes like 'qa'.
+    if (config) {
+        return <TallyChatInterface brandConfig={config} />;
+    }
+
     switch (label) {
-        case 'bgacademy':
-        case 'bgsankar':
-            return <TallyChatInterface brandConfig={config} />;
         case 'qa':
-            return <div className="p-10 text-white">QA Testing Dashboard</div>;
+            return <div className="p-10 text-white font-outfit text-2xl">QA Testing Dashboard</div>;
         case 'main':
         default:
             return <TallyChatInterface brandConfig={null} />;
