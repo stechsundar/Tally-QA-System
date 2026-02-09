@@ -18,18 +18,29 @@ app.add_middleware(
 )
 
 # Initialize the logic
-qa_system = TallyQASystem()
+qa_system = None
+qa_ready = False
+
 try:
+    qa_system = TallyQASystem()
     qa_system.load_vectorstore()
     qa_system.create_qa_chain(os.getenv("ANTHROPIC_API_KEY"))
+    qa_ready = True
+    print("✅ QA System initialized successfully")
 except Exception as e:
-    print(f"Warning: System initialization delayed: {e}")
+    print(f"⚠️ QA System not ready: {e}")
+    print("Server will start but /ask endpoint will not work until documents are loaded")
 
 class QuestionRequest(BaseModel):
     question: str
 
 @app.post("/ask")
 async def ask_question(request: QuestionRequest):
+    if not qa_ready or qa_system is None:
+        raise HTTPException(
+            status_code=503, 
+            detail="QA system not initialized. Please upload documents first."
+        )
     try:
         result = qa_system.ask(request.question)
         return result
@@ -47,7 +58,11 @@ async def get_config():
 
 @app.get("/status")
 async def status():
-    return {"status": "ready", "engine": "Tally Expert AI v2"}
+    return {
+        "status": "ready" if qa_ready else "starting",
+        "engine": "Tally Expert AI v2",
+        "qa_system_ready": qa_ready
+    }
 
 if __name__ == "__main__":
     import uvicorn
