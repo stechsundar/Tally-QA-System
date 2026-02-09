@@ -114,8 +114,33 @@ def show_sidebar(qa_system, analytics_engine):
                 st.error(msg)
         
         st.markdown("---")
+        st.markdown("### 🌐 Live URL Ingest")
+        ingest_url = st.text_input("Paste Tally Help URL", placeholder="https://help.tallysolutions.com/...")
+        if st.button("🚀 Ingest & Learn", use_container_width=True):
+            if ingest_url:
+                with st.spinner("Scraping and indexing..."):
+                    try:
+                        chunks = qa_system.add_url(ingest_url)
+                        if chunks > 0:
+                            st.success(f"✅ Learned! Added {chunks} new knowledge chunks.")
+                            # Refresh vectorstore in the background
+                            qa_system.load_vectorstore()
+                        else:
+                            st.error("Failed to extract content. Please check the URL.")
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
+            else:
+                st.warning("Please enter a URL first.")
+
+        st.markdown("---")
         if st.button("🗑️ Clear Chat History", use_container_width=True):
-            st.session_state.messages = []
+            st.session_state.kb_messages = []
+            st.session_state.data_messages = []
+            st.rerun()
+            
+        if st.button("🔄 Reload AI Engine", use_container_width=True):
+            st.cache_resource.clear()
+            st.success("AI Engine reloaded!")
             st.rerun()
 
 # --- Main App ---
@@ -148,15 +173,37 @@ def main():
                 st.markdown(prompt)
             
             with st.chat_message("assistant"):
-                with st.spinner("Consulting documentation..."):
-                    result = qa_system.ask(prompt)
-                    ans = result['answer']
-                    st.markdown(ans)
-                    if result['sources']:
-                        with st.expander("🔍 Sources"):
-                            for s in result['sources']:
-                                st.write(f"- **{s.get('title')}**")
-                    st.session_state.kb_messages.append({"role": "assistant", "content": ans})
+                # Use a placeholder for the status
+                status_placeholder = st.empty()
+                with status_placeholder:
+                    with st.spinner("Consulting local knowledge..."):
+                         # The qa_system.ask() now handles discover_and_ingest internally
+                         result = qa_system.ask(prompt)
+                
+                ans = result['answer']
+                st.markdown(ans)
+                if result['sources']:
+                    # Only show Web URLs that were actually cited in the answer
+                    import re
+                    cited_sources = re.findall(r'\[Source (\d+)\]', ans)
+                    cited_indices = [int(i)-1 for i in cited_sources]
+                    
+                    web_sources_to_show = []
+                    seen_urls = set()
+                    
+                    for i, s in enumerate(result['sources']):
+                        source_url = s.get('source', '')
+                        # Show if cited OR if it's one of the top 3 relevant web results
+                        if (i in cited_indices or i < 3) and not source_url.lower().endswith('.pdf'):
+                            if source_url and source_url not in seen_urls:
+                                web_sources_to_show.append(s)
+                                seen_urls.add(source_url)
+                    
+                    if web_sources_to_show:
+                        with st.expander("🌐 Official Tally Documentation Links"):
+                            for s in web_sources_to_show:
+                                st.markdown(f"- [{s.get('title', 'Tally Help Page')}]({s.get('source')})")
+                st.session_state.kb_messages.append({"role": "assistant", "content": ans})
 
     with tab2:
         st.markdown("### Query your Tally Data (CSV)")

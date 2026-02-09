@@ -1,0 +1,3 @@
+@echo off
+echo Starting Tally AI Desktop...
+npm start

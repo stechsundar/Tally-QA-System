@@ -35,8 +35,11 @@ class TallyDocScraper:
             main_content = (
                 soup.find('main') or 
                 soup.find('article') or 
+                soup.find('div', class_='entry-content') or
+                soup.find('div', class_='post-content') or
                 soup.find('div', class_='content') or
-                soup.find('div', id='content')
+                soup.find('div', id='content') or
+                soup.find('section', class_='site-content') 
             )
             
             if not main_content:
@@ -112,7 +115,8 @@ class TallyDocScraper:
             json.dump(self.scraped_data, f, indent=2, ensure_ascii=False)
         print(f"Saved {len(self.scraped_data)} documents to {filename}")
 
-# Run the scraper
-scraper = TallyDocScraper()
-docs = scraper.crawl(max_pages=500)
-scraper.save_to_file('tally_docs.json')
+if __name__ == "__main__":
+    # Run the scraper
+    scraper = TallyDocScraper()
+    docs = scraper.crawl(max_pages=500)
+    scraper.save_to_file('tally_docs.json')
