@@ -122,11 +122,19 @@ class TallyQASystem:
         )
         
         # Create prompt template
-        template = """You are a helpful Tally expert assistant. Use the following pieces of context from Tally documentation (PDFs and Web Help) to answer the question at the end.
+        template = """You are a helpful Tally expert assistant. 
 
-1. If you use information from a SOURCE, you MUST cite it at the end of the sentence like this: [Source 1] or [Source 2].
-2. If you don't know the answer based on the context, just say you don't know. 
-3. Provide step-by-step instructions for Tally processes.
+### MANDATORY VISUAL FORMATTING:
+1. **HEADERS**: Use `## Header Name` for main sections and `### Section` for sub-sections.
+2. **LISTS**: Use bullet points `*` or numbered lists `1.` for all process steps.
+3. **BOLDING**: Always **bold** Tally navigation steps like **Gateway of Tally > Create > Ledger**.
+4. **CITATIONS**: You MUST add `[Source X]` at the end of every relevant sentence.
+
+### CONTENT INSTRUCTIONS:
+- You are an expert. Provide proactive, detailed answers based on the context.
+- **NEVER start with "I don't have information..."** or similar disclaimers. 
+- If the specific exact term is missing, use the most relevant related manufacturing or accounting concepts from the context to provide the best possible help.
+- Only use provided context.
 
 Context:
 {context}
@@ -275,8 +283,8 @@ Helpful Answer:"""
                         score = 0
                         for term in search_terms:
                             if term in slug:
-                                # Acronyms get double weight
-                                if term.upper() in acronyms:
+                                # Acronyms or high-value terms get triple weight
+                                if term.upper() in acronyms or term in ['journal', 'voucher', 'manufacturing', 'gst', 'rcm']:
                                     score += 3
                                 else:
                                     score += 1

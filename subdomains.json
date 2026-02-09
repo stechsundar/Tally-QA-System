@@ -1,0 +1,14 @@
+{
+    "apps": {
+        "name": "Apps Transformation",
+        "logo": "/assets/bgsankar.jpg"
+    },
+    "bgsankar": {
+        "name": "BG Academy",
+        "logo": "/assets/bgsankar.jpg"
+    },
+    "bgacademy": {
+        "name": "BG Academy",
+        "logo": "/assets/bgsankar.jpg"
+    }
+}
