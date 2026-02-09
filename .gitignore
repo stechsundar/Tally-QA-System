@@ -19,8 +19,8 @@ venv/
 
 # AI/Data
 .env
-tally_docs.json
-tally_chroma_db/
+# tally_docs.json  # Commented out for deployment
+# tally_chroma_db/  # Commented out for deployment
 tally_chroma_db_*/
 
 # Temporary/Scripts
