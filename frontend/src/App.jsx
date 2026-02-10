@@ -8,7 +8,7 @@ import subdomainsData from './subdomains.json';
 import './index.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 
-    (window.location.hostname === 'localhost' ? "http://localhost:8000" : "https://your-huggingface-space.hf.space");
+    (window.location.hostname === 'localhost' ? "http://localhost:8000" : "https://tallysundar-tally-ai-backend.hf.space");
 
 // 1. Detect Label (Subdomain or URL Path)
 const getAppLabel = () => {
