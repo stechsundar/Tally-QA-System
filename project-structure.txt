@@ -1,0 +1,100 @@
+├── .gitignore
+├── .python-version
+├── backend
+│   ├── .env
+│   ├── .python-version
+│   ├── Dockerfile
+│   ├── qa_system.py
+│   ├── requirements.txt
+│   ├── server.py
+│   ├── subdomains.json
+│   ├── tally_chroma_db
+│   │   ├── 23f5ca53-8fd6-4d12-9959-0b9c70663fc2
+│   │   │   ├── data_level0.bin
+│   │   │   ├── header.bin
+│   │   │   ├── length.bin
+│   │   │   └── link_lists.bin
+│   │   └── chroma.sqlite3
+│   └── tally_docs.json
+├── create_tree.cjs
+├── create_tree_next.cjs
+├── deploy-huggingface.sh
+├── DEPLOYMENT_GUIDE.md
+├── frontend
+│   ├── index.html
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── postcss.config.js
+│   ├── public
+│   │   └── assets
+│   │       ├── anand.jpg
+│   │       ├── bgsankar.jpg
+│   │       └── feroz.jpg
+│   ├── src
+│   │   ├── App.jsx
+│   │   ├── index.css
+│   │   ├── main.jsx
+│   │   └── subdomains.json
+│   ├── tailwind.config.js
+│   └── vite.config.js
+├── netlify.toml
+├── package-lock.json
+├── package.json
+├── project-structure.txt
+├── README.md
+└── venv
+    ├── Include
+    │   └── site
+    │       └── python3.10
+    │           └── greenlet
+    │               └── greenlet.h
+    ├── Lib
+    ├── pyvenv.cfg
+    ├── Scripts
+    │   ├── activate
+    │   ├── activate.bat
+    │   ├── Activate.ps1
+    │   ├── chroma.exe
+    │   ├── coloredlogs.exe
+    │   ├── deactivate.bat
+    │   ├── distro.exe
+    │   ├── dotenv.exe
+    │   ├── f2py.exe
+    │   ├── fastapi.exe
+    │   ├── hf.exe
+    │   ├── html2text.exe
+    │   ├── httpx.exe
+    │   ├── huggingface-cli.exe
+    │   ├── humanfriendly.exe
+    │   ├── isympy.exe
+    │   ├── jsondiff
+    │   ├── jsonpatch
+    │   ├── jsonpointer
+    │   ├── jsonschema.exe
+    │   ├── markdown-it.exe
+    │   ├── normalizer.exe
+    │   ├── numpy-config.exe
+    │   ├── onnxruntime_test.exe
+    │   ├── pip.exe
+    │   ├── pip3.10.exe
+    │   ├── pip3.exe
+    │   ├── pybase64.exe
+    │   ├── pygmentize.exe
+    │   ├── pyproject-build.exe
+    │   ├── python.exe
+    │   ├── pythonw.exe
+    │   ├── tabulate.exe
+    │   ├── tiny-agents.exe
+    │   ├── torchfrtrace.exe
+    │   ├── torchrun.exe
+    │   ├── tqdm.exe
+    │   ├── typer.exe
+    │   ├── uvicorn.exe
+    │   ├── watchfiles.exe
+    │   ├── websockets.exe
+    │   ├── wheel.exe
+    │   └── wsdump.exe
+    └── share
+        └── man
+            └── man1
+                └── isympy.1

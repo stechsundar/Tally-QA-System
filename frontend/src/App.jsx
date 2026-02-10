@@ -7,8 +7,10 @@ import remarkGfm from 'remark-gfm';
 import subdomainsData from './subdomains.json';
 import './index.css';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 
+/* const API_BASE = import.meta.env.VITE_API_BASE || 
     (window.location.hostname === 'localhost' ? "http://localhost:8000" : "https://tallysundar-tally-ai-backend.hf.space");
+ */
+const API_BASE = import.meta.env.VITE_API_BASE;
 
 // 1. Detect Label (Subdomain or URL Path)
 const getAppLabel = () => {
@@ -28,8 +30,16 @@ const getAppLabel = () => {
 
 // This is your shared logic component (keeps the code small)
 function TallyChatInterface({ brandConfig }) {
-    const [messages, setMessages] = useState([
-        { role: 'assistant', content: `Hello! I'm your Tally Expert ${brandConfig?.name ? `(${brandConfig.name}) ` : ''}AI. Ask me anything about TallyPrime.` }
+        const [messages, setMessages] = useState([
+            {
+            role: 'assistant',
+            shortAnswer: `Hello! I'm your Tally Expert ${
+            brandConfig?.name ? `(${brandConfig.name}) ` : ''
+            }AI. Ask me anything about TallyPrime.`,
+            showLong: false,
+            showSources: false,
+            sources: []
+        }
     ]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
@@ -49,21 +59,63 @@ function TallyChatInterface({ brandConfig }) {
 
     useEffect(scrollToBottom, [messages]);
 
+        const dedupeSources = (sources = []) => {
+        const seen = new Set();
+        return sources.filter(s => {
+            if (!s?.source) return false;
+            if (seen.has(s.source)) return false;
+            seen.add(s.source);
+            return true;
+        });
+    };
+
     const handleSend = async (e) => {
         e.preventDefault();
         if (!input.trim() || loading) return;
 
         const userMsg = input;
         setInput('');
-        setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+
+        // 1. Push USER message
+        setMessages(prev => [
+            ...prev,
+            { role: 'user', content: userMsg }
+        ]);
+
         setLoading(true);
 
         try {
-            const response = await axios.post(`${API_BASE}/ask`, { question: userMsg });
-            const { answer, sources } = response.data;
-            setMessages(prev => [...prev, { role: 'assistant', content: answer, sources }]);
+            // 2. Call backend
+            const response = await axios.post(`${API_BASE}/ask`, {
+                question: userMsg
+            });
+
+            const { short_answer, long_answer, sources } = response.data;
+
+            // 3. Push ASSISTANT message (after response exists!)
+            setMessages(prev => [
+            ...prev,
+            {
+                role: 'assistant',
+                shortAnswer: short_answer,
+                longAnswer: long_answer || null,
+                sources: dedupeSources(sources),
+                showLong: false,
+                showSources: false
+            }
+            ]);
         } catch (error) {
-            setMessages(prev => [...prev, { role: 'assistant', content: "Backend server connection error." }]);
+            setMessages(prev => [
+                ...prev,
+                {
+                    role: 'assistant',
+                    shortAnswer: "Backend server connection error.",
+                    longAnswer: null,
+                    sources: [],
+                    showLong: false,
+                    showSources: false
+                }
+            ]);
         } finally {
             setLoading(false);
         }
@@ -106,22 +158,70 @@ function TallyChatInterface({ brandConfig }) {
                                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">{msg.role === 'user' ? 'YOU' : 'AI ASSISTANT'}</span>
                                 </div>
                                 <div className="markdown-content text-base md:text-lg leading-relaxed text-white/90">
-                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                                </div>
-
-                                {msg.sources && msg.sources.length > 0 && (
-                                    <div className="mt-8 pt-6 border-t border-white/10">
-                                        <div className="flex items-center gap-2 mb-4"><LinkIcon size={14} className="text-accent" /><span className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-400">Documentation Sources</span></div>
-                                        <div className="grid grid-cols-1 gap-3">
-                                            {msg.sources.filter(s => !s.source.toLowerCase().endsWith('.pdf')).map((s, idx) => (
-                                                <div key={idx} className={`flex flex-col gap-1 p-3 rounded-2xl border border-white/5 bg-white/5 hover:bg-white/10 transition-colors ${msg.content.includes(`[Source ${idx + 1}]`) ? 'ring-1 ring-blue-500/50 bg-blue-500/5' : 'opacity-70'}`}>
-                                                    <div className="flex items-center justify-between"><span className="text-[9px] font-bold px-2 py-0.5 rounded bg-blue-600/30 text-blue-300 uppercase">Source {idx + 1}</span></div>
-                                                    <div className="text-xs font-semibold text-white/80 mt-1">📄 {s.title}</div>
-                                                    <a href={s.source} target="_blank" rel="noreferrer" className="text-[10px] font-medium text-blue-400 hover:text-blue-300 mt-1 break-all flex items-center gap-1 group/link">🌐 {s.source}</a>
-                                                </div>
-                                            ))}
-                                        </div>
+                                    {msg.role === 'user' ? (
+                                        <p>{msg.content}</p>
+                                    ) : (
+                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                         {msg.showLong ? msg.longAnswer : msg.shortAnswer}
+                                        </ReactMarkdown>
+                                    )}
                                     </div>
+                                    {msg.showSources && msg.sources?.length > 0 && (
+                                        <div className="mt-8 pt-6 border-t border-white/10">
+                                            <div className="flex items-center gap-2 mb-4"><LinkIcon size={14} className="text-accent" /><span className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-400">Documentation Sources</span></div>
+                                            <div className="grid grid-cols-1 gap-2">
+                                                {msg.sources.filter(s => !s.source.toLowerCase().endsWith('.pdf')).map((s, idx) => (
+                                                    <div key={idx} className={`flex flex-col gap-1 p-3 rounded-2xl border border-white/5 bg-white/5 hover:bg-white/10 transition-colors ${(msg.shortAnswer || '').includes(`[Source ${idx + 1}]`) ? 'ring-1 ring-blue-500/50 bg-blue-500/5' : 'opacity-70'}`}>
+                                                        <div className="flex items-center justify-between"><span className="text-[9px] font-bold px-2 py-0.5 rounded bg-blue-600/30 text-blue-300 uppercase">Source {idx + 1}</span></div>
+                                                        <div className="text-xs font-semibold text-white/80 mt-1">📄 {s.title}</div>
+                                                        <a href={s.source} target="_blank" rel="noreferrer" className="text-[10px] font-medium text-blue-400 hover:text-blue-300 mt-1 break-all flex items-center gap-1 group/link">🌐 {s.source}</a>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {msg.longAnswer && (
+                                        <details className="mt-4 text-sm text-blue-300 cursor-pointer">
+                                            <summary className="flex items-center gap-1">
+                                            <ChevronDown size={14} /> View detailed explanation
+                                            </summary>
+                                            <div className="mt-3 markdown-content">
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                {msg.longAnswer}
+                                            </ReactMarkdown>
+                                            </div>
+                                        </details>
+                                        )}
+                                </div>
+                                <div className="flex gap-3 mt-4">
+                                {msg.longAnswer && (
+                                    <button
+                                    onClick={() =>
+                                        setMessages(prev =>
+                                        prev.map((m, idx) =>
+                                            idx === i ? { ...m, showLong: !m.showLong } : m
+                                        )
+                                        )
+                                    }
+                                    className="text-xs px-3 py-1 rounded-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-300"
+                                    >
+                                    {msg.showLong ? 'Hide Detail' : 'Answer in Detail'}
+                                    </button>
+                                )}
+
+                                {msg.sources?.length > 0 && (
+                                    <button
+                                    onClick={() =>
+                                        setMessages(prev =>
+                                        prev.map((m, idx) =>
+                                            idx === i ? { ...m, showSources: !m.showSources } : m
+                                        )
+                                        )
+                                    }
+                                    className="text-xs px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white/70"
+                                    >
+                                    {msg.showSources ? 'Hide Sources' : 'View Sources'}
+                                    </button>
                                 )}
                             </div>
                         </motion.div>
