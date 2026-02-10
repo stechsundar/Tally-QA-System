@@ -1,122 +1,192 @@
-import requests
-from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
-import time
-from collections import deque
-import json
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from qa_system import TallyQASystem
+import os
+from dotenv import load_dotenv
+import datetime
+import logging
 
-class TallyDocScraper:
-    def __init__(self, base_url="https://help.tallysolutions.com/"):
-        self.base_url = base_url
-        self.visited_urls = set()
-        self.to_visit = deque([base_url])
-        self.scraped_data = []
-        
-    def is_valid_url(self, url):
-        """Check if URL belongs to Tally help domain"""
-        parsed = urlparse(url)
-        return parsed.netloc == "help.tallysolutions.com"
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+load_dotenv()
+
+app = FastAPI(title="Tally AI API")
+
+# CORS - Allow all origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=True
+)
+
+# Initialize variables
+qa_system = None
+qa_ready = False
+initialization_error = None
+
+# Check for required environment variables
+api_key = os.getenv("ANTHROPIC_API_KEY")
+if not api_key:
+    logger.warning("⚠️ ANTHROPIC_API_KEY not found in environment variables")
+else:
+    logger.info("✅ ANTHROPIC_API_KEY found")
+
+# ========================================
+# THIS IS WHERE THE STARTUP EVENT GOES!
+# Place it AFTER app = FastAPI() and BEFORE route definitions
+# ========================================
+@app.on_event("startup")
+async def startup_event():
+    """Initialize QA system when the server starts"""
+    global qa_system, qa_ready, initialization_error
     
-    def scrape_page(self, url):
-        """Scrape content from a single page"""
+    logger.info("🚀 Starting Tally AI Backend...")
+    
+    try:
+        logger.info("Initializing QA System...")
+        qa_system = TallyQASystem()
+        
+        logger.info("Loading vector store...")
+        qa_system.load_vectorstore()
+        
+        logger.info("Creating QA chain...")
+        qa_system.create_qa_chain(api_key)
+        
+        qa_ready = True
+        logger.info("✅ QA System initialized successfully")
+    except Exception as e:
+        initialization_error = str(e)
+        logger.error(f"❌ QA System initialization failed: {e}")
+        logger.exception("Full error traceback:")
+
+# ========================================
+# REQUEST/RESPONSE MODELS
+# ========================================
+class QuestionRequest(BaseModel):
+    question: str
+
+# ========================================
+# API ENDPOINTS
+# ========================================
+@app.post("/ask")
+async def ask_question(request: QuestionRequest):
+    """Ask a question to the Tally AI system"""
+    logger.info(f"📝 Received question: {request.question[:100]}...")
+    
+    if not qa_ready or qa_system is None:
+        error_msg = f"QA system not initialized. Error: {initialization_error}" if initialization_error else "QA system not initialized"
+        logger.error(error_msg)
+        raise HTTPException(
+            status_code=503, 
+            detail=error_msg
+        )
+    
+    try:
+        result = qa_system.ask(request.question)
+        logger.info("✅ Question answered successfully")
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error processing question: {str(e)}")
+        logger.exception("Full error traceback:")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/config")
+async def get_config():
+    """Get subdomain configuration"""
+    import json
+    config_path = "subdomains.json"
+    
+    if os.path.exists(config_path):
         try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Extract title
-            title = soup.find('h1')
-            title_text = title.get_text(strip=True) if title else ""
-            
-            # Get main content area - adjust selectors based on actual site
-            main_content = (
-                soup.find('main') or 
-                soup.find('article') or 
-                soup.find('div', class_='entry-content') or
-                soup.find('div', class_='post-content') or
-                soup.find('div', class_='content') or
-                soup.find('div', id='content') or
-                soup.find('section', class_='site-content') 
-            )
-            
-            if not main_content:
-                main_content = soup.body
-            
-            # Remove unwanted elements
-            for element in main_content.find_all(['script', 'style', 'nav', 'footer', 'header']):
-                element.decompose()
-            
-            # Extract text
-            text = main_content.get_text(separator='\n', strip=True)
-            
-            # Clean up extra whitespace
-            lines = [line.strip() for line in text.split('\n') if line.strip()]
-            text = '\n'.join(lines)
-            
-            # Extract links
-            links = []
-            for link in soup.find_all('a', href=True):
-                absolute_url = urljoin(url, link['href'])
-                if self.is_valid_url(absolute_url) and '#' not in absolute_url:
-                    links.append(absolute_url)
-            
-            # Extract breadcrumb or category if available
-            breadcrumb = soup.find('nav', class_='breadcrumb') or soup.find('ol', class_='breadcrumb')
-            category = ""
-            if breadcrumb:
-                category = breadcrumb.get_text(separator=' > ', strip=True)
-            
-            return {
-                'url': url,
-                'title': title_text,
-                'content': text,
-                'category': category,
-                'links': list(set(links))  # Remove duplicates
-            }
-            
+            with open(config_path, "r") as f:
+                return json.load(f)
         except Exception as e:
-            print(f"Error scraping {url}: {e}")
-            return None
+            logger.error(f"Error reading config: {e}")
+            return {"error": str(e)}
     
-    def crawl(self, max_pages=500):
-        """Crawl the documentation site"""
-        page_count = 0
-        
-        while self.to_visit and page_count < max_pages:
-            url = self.to_visit.popleft()
-            
-            if url in self.visited_urls:
-                continue
-            
-            print(f"Scraping ({page_count + 1}/{max_pages}): {url}")
-            self.visited_urls.add(url)
-            
-            page_data = self.scrape_page(url)
-            
-            if page_data and len(page_data['content']) > 100:  # Skip empty pages
-                self.scraped_data.append(page_data)
-                
-                # Add new links to queue
-                for link in page_data['links']:
-                    if link not in self.visited_urls:
-                        self.to_visit.append(link)
-                
-                page_count += 1
-                time.sleep(1)  # Be respectful to the server
-        
-        return self.scraped_data
-    
-    def save_to_file(self, filename='tally_docs.json'):
-        """Save scraped data to JSON file"""
-        with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(self.scraped_data, f, indent=2, ensure_ascii=False)
-        print(f"Saved {len(self.scraped_data)} documents to {filename}")
+    logger.warning("Config file not found")
+    return {"error": "Config file not found"}
 
+@app.get("/health")
+async def health_check():
+    """Detailed health check for debugging deployment issues"""
+    health_status = {
+        "status": "healthy" if qa_ready else "unhealthy",
+        "timestamp": datetime.datetime.now().isoformat(),
+        "services": {
+            "qa_system": qa_ready,
+            "api_key_configured": bool(api_key),
+            "vector_db_exists": os.path.exists("./tally_chroma_db"),
+            "docs_file_exists": os.path.exists("tally_docs.json"),
+            "config_file_exists": os.path.exists("subdomains.json")
+        },
+        "environment": {
+            "port": os.environ.get("PORT", "7860"),
+            "host": os.environ.get("HOST", "0.0.0.0"),
+            "space_id": os.environ.get("SPACE_ID", "N/A")
+        }
+    }
+    
+    if initialization_error:
+        health_status["initialization_error"] = initialization_error
+    
+    if not qa_ready:
+        health_status["error"] = "QA system not initialized"
+    
+    return health_status
+
+@app.get("/status")
+async def status():
+    """Quick status check"""
+    return {
+        "status": "ready" if qa_ready else "starting",
+        "engine": "Tally Expert AI v2",
+        "qa_system_ready": qa_ready,
+        "api_key_configured": bool(api_key),
+        "environment": "production" if os.environ.get("PORT") else "development",
+        "initialization_error": initialization_error if not qa_ready else None
+    }
+
+@app.get("/")
+async def root():
+    """Root endpoint with API information"""
+    return {
+        "message": "Tally AI Backend API",
+        "status": "running",
+        "engine": "Tally Expert AI v2",
+        "qa_system_ready": qa_ready,
+        "endpoints": {
+            "root": "/",
+            "status": "/status",
+            "health": "/health",
+            "config": "/config",
+            "ask": "/ask (POST)",
+            "docs": "/docs",
+            "redoc": "/redoc"
+        },
+        "note": "Visit /docs for interactive API documentation"
+    }
+
+# ========================================
+# SERVER STARTUP
+# ========================================
 if __name__ == "__main__":
-    # Run the scraper
-    scraper = TallyDocScraper()
-    docs = scraper.crawl(max_pages=500)
-    scraper.save_to_file('tally_docs.json')
+    import uvicorn
+    port = int(os.environ.get("PORT", 7860))
+    host = os.environ.get("HOST", "0.0.0.0")
+    
+    logger.info(f"🚀 Starting server on {host}:{port}")
+    uvicorn.run(
+        app, 
+        host=host, 
+        port=port,
+        log_level="info"
+    )
