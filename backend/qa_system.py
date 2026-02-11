@@ -75,9 +75,9 @@ class TallyQASystem:
     def create_qa_chain(self, anthropic_api_key):
         if self.vectorstore is None:
             raise ValueError("Vector store not loaded")
-
+##claude-sonnet-4-20250514
         self.llm = ChatAnthropic(
-            model="claude-sonnet-4-20250514",
+            model="claude-haiku-4-5-20251001",
             anthropic_api_key=anthropic_api_key,
             temperature=0,
             max_tokens=1500,

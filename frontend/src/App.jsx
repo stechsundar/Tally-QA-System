@@ -10,8 +10,6 @@ import './index.css';
 const API_BASE = import.meta.env.VITE_API_BASE || 
     (window.location.hostname === 'localhost' ? "http://localhost:8000" : "https://tallysundar-tally-ai-backend.hf.space");
  
-//const API_BASE = import.meta.env.VITE_API_BASE;
-
 // 1. Detect Label (Subdomain or URL Path)
 const getAppLabel = () => {
     const host = window.location.hostname;
@@ -30,11 +28,11 @@ const getAppLabel = () => {
 
 // This is your shared logic component (keeps the code small)
 function TallyChatInterface({ brandConfig }) {
-        const [messages, setMessages] = useState([
-            {
+    const [messages, setMessages] = useState([
+        {
             role: 'assistant',
             shortAnswer: `Hello! I'm your Tally Expert ${
-            brandConfig?.name ? `(${brandConfig.name}) ` : ''
+                brandConfig?.name ? `(${brandConfig.name}) ` : ''
             }AI. Ask me anything about TallyPrime.`,
             showLong: false,
             showSources: false,
@@ -59,7 +57,7 @@ function TallyChatInterface({ brandConfig }) {
 
     useEffect(scrollToBottom, [messages]);
 
-        const dedupeSources = (sources = []) => {
+    const dedupeSources = (sources = []) => {
         const seen = new Set();
         return sources.filter(s => {
             if (!s?.source) return false;
@@ -94,15 +92,15 @@ function TallyChatInterface({ brandConfig }) {
 
             // 3. Push ASSISTANT message (after response exists!)
             setMessages(prev => [
-            ...prev,
-            {
-                role: 'assistant',
-                shortAnswer: short_answer,
-                longAnswer: long_answer || null,
-                sources: dedupeSources(sources),
-                showLong: false,
-                showSources: false
-            }
+                ...prev,
+                {
+                    role: 'assistant',
+                    shortAnswer: short_answer,
+                    longAnswer: long_answer || null,
+                    sources: dedupeSources(sources),
+                    showLong: false,
+                    showSources: false
+                }
             ]);
         } catch (error) {
             setMessages(prev => [
@@ -157,71 +155,114 @@ function TallyChatInterface({ brandConfig }) {
                                     </div>
                                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">{msg.role === 'user' ? 'YOU' : 'AI ASSISTANT'}</span>
                                 </div>
+
+                                {/* Short Answer */}
                                 <div className="markdown-content text-base md:text-lg leading-relaxed text-white/90">
                                     {msg.role === 'user' ? (
                                         <p>{msg.content}</p>
                                     ) : (
                                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                         {msg.showLong ? msg.longAnswer : msg.shortAnswer}
+                                            {msg.shortAnswer}
                                         </ReactMarkdown>
                                     )}
+                                </div>
+
+                                {/* Buttons after short answer - show both if not expanded */}
+                                {msg.role === 'assistant' && !msg.showLong && (msg.longAnswer || msg.sources?.length > 0) && (
+                                    <div className="flex gap-3 mt-4">
+                                        {msg.longAnswer && (
+                                            <button
+                                                onClick={() =>
+                                                    setMessages(prev =>
+                                                        prev.map((m, idx) =>
+                                                            idx === i ? { ...m, showLong: !m.showLong } : m
+                                                        )
+                                                    )
+                                                }
+                                                className="text-xs px-3 py-1 rounded-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-300"
+                                            >
+                                                Answer in Detail
+                                            </button>
+                                        )}
+                                        
+                                        {msg.sources?.length > 0 && (
+                                            <button
+                                                onClick={() =>
+                                                    setMessages(prev =>
+                                                        prev.map((m, idx) =>
+                                                            idx === i ? { ...m, showSources: !m.showSources } : m
+                                                        )
+                                                    )
+                                                }
+                                                className="text-xs px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white/70"
+                                            >
+                                                {msg.showSources ? 'Hide Sources' : 'View Sources'}
+                                            </button>
+                                        )}
                                     </div>
-                                    {msg.showSources && msg.sources?.length > 0 && (
-                                        <div className="mt-8 pt-6 border-t border-white/10">
-                                            <div className="flex items-center gap-2 mb-4"><LinkIcon size={14} className="text-accent" /><span className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-400">Documentation Sources</span></div>
-                                            <div className="grid grid-cols-1 gap-2">
-                                                {msg.sources.filter(s => !s.source.toLowerCase().endsWith('.pdf')).map((s, idx) => (
-                                                    <div key={idx} className={`flex flex-col gap-1 p-3 rounded-2xl border border-white/5 bg-white/5 hover:bg-white/10 transition-colors ${(msg.shortAnswer || '').includes(`[Source ${idx + 1}]`) ? 'ring-1 ring-blue-500/50 bg-blue-500/5' : 'opacity-70'}`}>
-                                                        <div className="flex items-center justify-between"><span className="text-[9px] font-bold px-2 py-0.5 rounded bg-blue-600/30 text-blue-300 uppercase">Source {idx + 1}</span></div>
-                                                        <div className="text-xs font-semibold text-white/80 mt-1">📄 {s.title}</div>
-                                                        <a href={s.source} target="_blank" rel="noreferrer" className="text-[10px] font-medium text-blue-400 hover:text-blue-300 mt-1 break-all flex items-center gap-1 group/link">🌐 {s.source}</a>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                    {msg.longAnswer && (
-                                        <details className="mt-4 text-sm text-blue-300 cursor-pointer">
-                                            <summary className="flex items-center gap-1">
-                                            <ChevronDown size={14} /> View detailed explanation
-                                            </summary>
-                                            <div className="mt-3 markdown-content">
+                                )}
+
+                                {/* Long Answer (Expandable) */}
+                                {msg.role === 'assistant' && msg.longAnswer && msg.showLong && (
+                                    <div className="mt-6 pt-6 border-t border-white/10">
+                                        <div className="markdown-content text-base md:text-lg leading-relaxed text-white/90">
                                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                                 {msg.longAnswer}
                                             </ReactMarkdown>
-                                            </div>
-                                        </details>
-                                        )}
-                                </div>
-                                <div className="flex gap-3 mt-4">
-                                {msg.longAnswer && (
-                                    <button
-                                    onClick={() =>
-                                        setMessages(prev =>
-                                        prev.map((m, idx) =>
-                                            idx === i ? { ...m, showLong: !m.showLong } : m
-                                        )
-                                        )
-                                    }
-                                    className="text-xs px-3 py-1 rounded-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-300"
-                                    >
-                                    {msg.showLong ? 'Hide Detail' : 'Answer in Detail'}
-                                    </button>
+                                        </div>
+
+                                        {/* Buttons below detailed answer */}
+                                        <div className="flex gap-3 mt-4">
+                                            <button
+                                                onClick={() =>
+                                                    setMessages(prev =>
+                                                        prev.map((m, idx) =>
+                                                            idx === i ? { ...m, showLong: !m.showLong } : m
+                                                        )
+                                                    )
+                                                }
+                                                className="text-xs px-3 py-1 rounded-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-300"
+                                            >
+                                                Hide Detail
+                                            </button>
+
+                                            {msg.sources?.length > 0 && (
+                                                <button
+                                                    onClick={() =>
+                                                        setMessages(prev =>
+                                                            prev.map((m, idx) =>
+                                                                idx === i ? { ...m, showSources: !m.showSources } : m
+                                                            )
+                                                        )
+                                                    }
+                                                    className="text-xs px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white/70"
+                                                >
+                                                    {msg.showSources ? 'Hide Sources' : 'View Sources'}
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
                                 )}
 
-                                {msg.sources?.length > 0 && (
-                                    <button
-                                    onClick={() =>
-                                        setMessages(prev =>
-                                        prev.map((m, idx) =>
-                                            idx === i ? { ...m, showSources: !m.showSources } : m
-                                        )
-                                        )
-                                    }
-                                    className="text-xs px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white/70"
-                                    >
-                                    {msg.showSources ? 'Hide Sources' : 'View Sources'}
-                                    </button>
+                                {/* Sources at the bottom */}
+                                {msg.role === 'assistant' && msg.showSources && msg.sources?.length > 0 && (
+                                    <div className="mt-8 pt-6 border-t border-white/10">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <LinkIcon size={14} className="text-accent" />
+                                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-400">Documentation Sources</span>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            {msg.sources.filter(s => !s.source.toLowerCase().endsWith('.pdf')).map((s, idx) => (
+                                                <div key={idx} className={`flex flex-col gap-1 p-3 rounded-2xl border border-white/5 bg-white/5 hover:bg-white/10 transition-colors ${(msg.shortAnswer || '').includes(`[Source ${idx + 1}]`) ? 'ring-1 ring-blue-500/50 bg-blue-500/5' : 'opacity-70'}`}>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-blue-600/30 text-blue-300 uppercase">Source {idx + 1}</span>
+                                                    </div>
+                                                    <div className="text-xs font-semibold text-white/80 mt-1">📄 {s.title}</div>
+                                                    <a href={s.source} target="_blank" rel="noreferrer" className="text-[10px] font-medium text-blue-400 hover:text-blue-300 mt-1 break-all flex items-center gap-1 group/link">🌐 {s.source}</a>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                         </motion.div>
@@ -230,7 +271,8 @@ function TallyChatInterface({ brandConfig }) {
                         {loading && (
                             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex justify-start">
                                 <div className="glass-panel p-6 flex items-center gap-4 border-blue-500/20">
-                                    <Loader2 className="animate-spin text-accent" size={20} /><span className="text-xs font-semibold text-text-muted italic tracking-wide">Deep searching Tally documentation...</span>
+                                    <Loader2 className="animate-spin text-accent" size={20} />
+                                    <span className="text-xs font-semibold text-text-muted italic tracking-wide">Deep searching Tally documentation...</span>
                                 </div>
                             </motion.div>
                         )}
@@ -244,7 +286,9 @@ function TallyChatInterface({ brandConfig }) {
                 <form onSubmit={handleSend} className="relative group">
                     <div className="relative flex items-center bg-[#1a2235]/80 backdrop-blur-xl rounded-2xl p-2 border border-white/10 group-focus-within:border-blue-500/50 transition-all shadow-2xl">
                         <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="How do I record RCM sales in TallyPrime?" className="flex-1 bg-transparent border-none px-6 py-4 text-white outline-none placeholder:text-text-muted text-base md:text-lg" />
-                        <button type="submit" disabled={loading || !input.trim()} className="bg-blue-600 hover:bg-blue-500 disabled:opacity-30 disabled:hover:bg-blue-600 p-4 rounded-xl transition-all shadow-lg active:scale-95 group/btn"><Send size={20} className="text-white" /></button>
+                        <button type="submit" disabled={loading || !input.trim()} className="bg-blue-600 hover:bg-blue-500 disabled:opacity-30 disabled:hover:bg-blue-600 p-4 rounded-xl transition-all shadow-lg active:scale-95 group/btn">
+                            <Send size={20} className="text-white" />
+                        </button>
                     </div>
                 </form>
                 <div className="flex justify-between items-center mt-4 px-2">
