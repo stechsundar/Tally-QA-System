@@ -1,48 +1,45 @@
 import os
 import datetime
-from fastapi import FastAPI, HTTPException
+import asyncio
+from contextlib import asynccontextmanager
+from functools import lru_cache
+
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-# Your QA system
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
 from qa_system import TallyQASystem
 
-load_dotenv()  # Load environment variables from .env file
 
-api_key = os.getenv("ANTHROPIC_API_KEY")
+# --------------------------------------------------
+# Load environment
+# --------------------------------------------------
 
-# Global state
+load_dotenv()
+
+# --------------------------------------------------
+# Global State
+# --------------------------------------------------
+
 qa_system = None
 qa_ready = False
 initialization_error = None
 
-# --------------------------------------------------
-# App setup
-# --------------------------------------------------
+semaphore = asyncio.Semaphore(5)  # max concurrent requests
 
-app = FastAPI(
-    title="Tally AI Backend API",
-    version="2.0.0"
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # replace with Netlify URL later
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # --------------------------------------------------
-# Global state (lazy-loaded)
+# Lifespan Startup (Modern FastAPI)
 # --------------------------------------------------
 
-qa_system: TallyQASystem | None = None
-qa_ready: bool = False
-qa_error: str | None = None
-
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global qa_system, qa_ready, initialization_error
 
     try:
@@ -50,17 +47,56 @@ async def startup_event():
 
         qa_system = TallyQASystem()
         qa_system.load_vectorstore()
-        qa_system.create_qa_chain(api_key)
+        qa_system.create_qa_chain()
 
         qa_ready = True
-        initialization_error = None
-
-        print("✅ QA system READY")
+        print("✅ QA system ready.")
 
     except Exception as e:
-        qa_ready = False
         initialization_error = str(e)
-        print("❌ QA system failed:", e)
+        print("❌ QA initialization failed:", initialization_error)
+
+    yield
+
+    print("🛑 Shutting down...")
+
+
+# --------------------------------------------------
+# Create App FIRST
+# --------------------------------------------------
+
+app = FastAPI(
+    title="Tally AI Backend API",
+    version="3.0.0",
+    lifespan=lifespan
+)
+
+# --------------------------------------------------
+# Middleware
+# --------------------------------------------------
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Lock this in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --------------------------------------------------
+# Rate Limiter (AFTER app creation)
+# --------------------------------------------------
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Too many requests. Please slow down."},
+    )
 
 
 # --------------------------------------------------
@@ -70,35 +106,15 @@ async def startup_event():
 class QuestionRequest(BaseModel):
     question: str
 
+
 # --------------------------------------------------
-# Helpers
+# Caching Layer (Cost Reduction)
 # --------------------------------------------------
 
-def init_qa_system():
-    """
-    Initialize QA system lazily.
-    This MUST NOT run at import time on HF.
-    """
-    global qa_system, qa_ready, qa_error
+@lru_cache(maxsize=1000)
+def cached_ask(question: str):
+    return qa_system.ask(question.lower().strip())
 
-    if qa_ready:
-        return
-
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        qa_error = "ANTHROPIC_API_KEY not set in Hugging Face Variables"
-        raise RuntimeError(qa_error)
-
-    try:
-        qa_system = TallyQASystem()
-        qa_system.load_vectorstore()
-        qa_system.create_qa_chain(api_key)
-        qa_ready = True
-        print("✅ QA system initialized")
-    except Exception as e:
-        qa_error = str(e)
-        print("❌ QA init failed:", qa_error)
-        raise
 
 # --------------------------------------------------
 # Routes
@@ -108,7 +124,7 @@ def init_qa_system():
 async def root():
     return {
         "message": "Tally AI Backend API",
-        "engine": "Tally Expert AI v2",
+        "engine": "Tally Expert AI v3",
         "qa_ready": qa_ready,
         "time": datetime.datetime.utcnow().isoformat(),
         "endpoints": {
@@ -119,57 +135,73 @@ async def root():
         }
     }
 
+
 @app.get("/health")
-async def health():
-    return {
-        "ok": True,
-        "qa_ready": qa_ready,
-        "error": qa_error,
-        "time": datetime.datetime.utcnow().isoformat()
-    }
+def health():
+    try:
+        count = qa_system.vectorstore._collection.count()
+        return {
+            "status": "healthy",
+            "vector_documents": count,
+            "model": "claude-3-haiku-20240307"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "detail": str(e)
+        }
+
 
 @app.get("/status")
 async def status():
     api_key = os.getenv("ANTHROPIC_API_KEY")
 
     return {
-        "status": "ready" if qa_ready else "starting" if not qa_error else "error",
-        "engine": "Tally Expert AI v2",
+        "status": "ready" if qa_ready else "starting" if not initialization_error else "error",
         "qa_ready": qa_ready,
         "api_key_present": bool(api_key),
         "vector_db_exists": os.path.exists("./tally_chroma_db"),
         "docs_file_exists": os.path.exists("tally_docs.json"),
         "initialization_error": initialization_error
     }
-    
+
 
 @app.post("/ask")
-async def ask_question(req: QuestionRequest):
-    if not req.question.strip():
-        raise HTTPException(status_code=400, detail="Question cannot be empty")
-
-    if not qa_ready:
+@limiter.limit("10/minute")
+async def ask_question(request: Request, req: QuestionRequest):
+    async with semaphore:
         try:
-            init_qa_system()
-        except Exception as e:
-            raise HTTPException(
-                status_code=503,
-                detail=f"QA system not ready: {e}"
+            result = await asyncio.wait_for(
+                asyncio.to_thread(cached_ask, req.question),
+                timeout=20
             )
+            return result
 
-    try:
-        return qa_system.ask(req.question)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        except asyncio.TimeoutError:
+            return {
+                "short_answer": "Request timed out.",
+                "long_answer": "The system took too long to respond.",
+                "sources": []
+            }
+
+        except Exception as e:
+            print("🔥 INTERNAL ERROR:", str(e))
+            return {
+                "short_answer": "An internal system error occurred.",
+                "long_answer": "Please try again later.",
+                "sources": []
+            }
+
 
 # --------------------------------------------------
-# Entry point (HF / Docker)
+# Entry point (HF / Docker / Local)
 # --------------------------------------------------
 
 if __name__ == "__main__":
     import uvicorn
 
     port = int(os.environ.get("PORT", 7860))
+
     print(f"🚀 Starting server on 0.0.0.0:{port}")
 
     uvicorn.run(

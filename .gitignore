@@ -28,7 +28,7 @@ verify_qa.py
 inspect_pdfs.py
 debug_rag.py
 setup_pdf_only.py
-
+backend\anthropic_batch.py
 # Keep these txt files
 !tally-site-urls.txt
 !requirements.txt

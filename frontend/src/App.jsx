@@ -61,8 +61,11 @@ function TallyChatInterface({ brandConfig }) {
         const seen = new Set();
         return sources.filter(s => {
             if (!s?.source) return false;
-            if (seen.has(s.source)) return false;
-            seen.add(s.source);
+
+            const clean = s.source.split('#')[0].split('?')[0].toLowerCase();
+
+            if (seen.has(clean)) return false;
+            seen.add(clean);
             return true;
         });
     };
@@ -87,8 +90,7 @@ function TallyChatInterface({ brandConfig }) {
             const response = await axios.post(`${API_BASE}/ask`, {
                 question: userMsg
             });
-
-            const { short_answer, long_answer, sources } = response.data;
+            const { short_answer, long_answer, sources, watch_video, video_links } = response.data;
 
             // 3. Push ASSISTANT message (after response exists!)
             setMessages(prev => [
@@ -98,10 +100,14 @@ function TallyChatInterface({ brandConfig }) {
                     shortAnswer: short_answer,
                     longAnswer: long_answer || null,
                     sources: dedupeSources(sources),
+                    watchVideo: watch_video || false,
+                    videoLinks: video_links || [],
                     showLong: false,
                     showSources: false
                 }
             ]);
+            console.log("API RESPONSE:", response.data);
+
         } catch (error) {
             setMessages(prev => [
                 ...prev,
@@ -168,7 +174,8 @@ function TallyChatInterface({ brandConfig }) {
                                 </div>
 
                                 {/* Buttons after short answer - show both if not expanded */}
-                                {msg.role === 'assistant' && !msg.showLong && (msg.longAnswer || msg.sources?.length > 0) && (
+                                {msg.role === 'assistant' && !msg.showLong && 
+                                    (msg.longAnswer || msg.sources?.length > 0 || msg.watchVideo) && (
                                     <div className="flex gap-3 mt-4">
                                         {msg.longAnswer && (
                                             <button
@@ -179,7 +186,14 @@ function TallyChatInterface({ brandConfig }) {
                                                         )
                                                     )
                                                 }
-                                                className="text-xs px-3 py-1 rounded-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-300"
+                                                className="
+                                                    text-sm md:text-xs
+                                                    px-4 py-2 md:px-3 md:py-1
+                                                    rounded-full
+                                                    bg-red-600/20 hover:bg-red-600/30
+                                                    text-red-300
+                                                    transition-all
+                                                "
                                             >
                                                 Answer in Detail
                                             </button>
@@ -194,9 +208,31 @@ function TallyChatInterface({ brandConfig }) {
                                                         )
                                                     )
                                                 }
-                                                className="text-xs px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white/70"
+                                                className="
+                                                    text-sm md:text-xs
+                                                    px-4 py-2 md:px-3 md:py-1
+                                                    rounded-full
+                                                    bg-white/10 hover:bg-white/20
+                                                    text-white/70
+                                                    transition-all
+                                                "
                                             >
                                                 {msg.showSources ? 'Hide Sources' : 'View Sources'}
+                                            </button>
+                                        )}
+                                        {msg.watchVideo && msg.videoLinks?.length > 0 && (
+                                            <button
+                                                onClick={() => window.open(msg.videoLinks[0].source, "_blank")}
+                                                className="
+                                                    text-sm md:text-xs
+                                                    px-4 py-2 md:px-3 md:py-1
+                                                    rounded-full
+                                                    bg-red-600/20 hover:bg-red-600/30
+                                                    text-red-300
+                                                    transition-all
+                                                "
+                                            >
+                                                🎥 Watch TallyPrime Videos
                                             </button>
                                         )}
                                     </div>
@@ -221,7 +257,14 @@ function TallyChatInterface({ brandConfig }) {
                                                         )
                                                     )
                                                 }
-                                                className="text-xs px-3 py-1 rounded-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-300"
+                                                className="
+                                                    text-sm md:text-xs
+                                                    px-4 py-2 md:px-3 md:py-1
+                                                    rounded-full
+                                                    bg-red-600/20 hover:bg-red-600/30
+                                                    text-red-300
+                                                    transition-all
+                                                "
                                             >
                                                 Hide Detail
                                             </button>
@@ -235,9 +278,32 @@ function TallyChatInterface({ brandConfig }) {
                                                             )
                                                         )
                                                     }
-                                                    className="text-xs px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white/70"
+                                                    className="
+                                                        text-sm md:text-xs
+                                                        px-4 py-2 md:px-3 md:py-1
+                                                        rounded-full
+                                                        bg-red-600/20 hover:bg-red-600/30
+                                                        text-red-300
+                                                        transition-all
+                                                    "
                                                 >
                                                     {msg.showSources ? 'Hide Sources' : 'View Sources'}
+                                                </button>
+                                            )}
+                                            {msg.watchVideo && msg.videoLinks?.length > 0 && (
+                                                <button
+                                                    onClick={() => window.open(msg.videoLinks[0].source, "_blank")}
+                                                    className="
+                                                        text-sm md:text-xs
+                                                        px-4 py-2 md:px-3 md:py-1
+                                                        rounded-full
+                                                        bg-red-600/20 hover:bg-red-600/30
+                                                        text-red-300
+                                                        transition-all
+                                                    "
+
+                                                >
+                                                    🎥 Watch Video
                                                 </button>
                                             )}
                                         </div>
