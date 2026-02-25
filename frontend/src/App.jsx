@@ -8,9 +8,9 @@ import subdomainsData from './subdomains.json';
 import './index.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 
-    (window.location.hostname === 'localhost' ? "http://localhost:8000" : "https://tallysundar-tally-ai-backend.hf.space");
- 
-// 1. Detect Label (Subdomain or URL Path)
+    (window.location.hostname === 'localhost' ? "http://localhost:7860" : "https://tallysundar-tally-ai-backend.hf.space");
+
+    // 1. Detect Label (Subdomain or URL Path)
 const getAppLabel = () => {
     const host = window.location.hostname;
     const pathParts = window.location.pathname.split('/').filter(Boolean);
@@ -316,7 +316,6 @@ function App() {
         case 'main':
         default:
             return <TallyChatInterface brandConfig={null} />;
-    }
-}
+    }}
 
 export default App;
