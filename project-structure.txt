@@ -1,9 +1,9 @@
 ├── .gitignore
 ├── .python-version
 ├── backend
-│   ├── .env
 │   ├── .python-version
 │   ├── Dockerfile
+│   ├── ingest_youtube.py
 │   ├── qa_system.py
 │   ├── requirements.txt
 │   ├── server.py
@@ -17,6 +17,7 @@
 │   │   └── chroma.sqlite3
 │   └── tally_docs.json
 ├── create_tree.cjs
+├── create_tree.js
 ├── create_tree_next.cjs
 ├── deploy-huggingface.sh
 ├── DEPLOYMENT_GUIDE.md
@@ -29,7 +30,8 @@
 │   │   └── assets
 │   │       ├── anand.jpg
 │   │       ├── bgsankar.jpg
-│   │       └── feroz.jpg
+│   │       ├── feroz.jpg
+│   │       └── tsslogo.jpg
 │   ├── src
 │   │   ├── App.jsx
 │   │   ├── index.css
@@ -42,6 +44,13 @@
 ├── package.json
 ├── project-structure.txt
 ├── README.md
+├── tally_chroma_db
+│   ├── 4d6e5fed-e9ae-4ce3-bfec-cf94392cac82
+│   │   ├── data_level0.bin
+│   │   ├── header.bin
+│   │   ├── length.bin
+│   │   └── link_lists.bin
+│   └── chroma.sqlite3
 └── venv
     ├── Include
     │   └── site
@@ -59,6 +68,7 @@
     │   ├── deactivate.bat
     │   ├── distro.exe
     │   ├── dotenv.exe
+    │   ├── email_validator.exe
     │   ├── f2py.exe
     │   ├── fastapi.exe
     │   ├── hf.exe
@@ -66,11 +76,23 @@
     │   ├── httpx.exe
     │   ├── huggingface-cli.exe
     │   ├── humanfriendly.exe
+    │   ├── ipython.exe
+    │   ├── ipython3.exe
     │   ├── isympy.exe
     │   ├── jsondiff
     │   ├── jsonpatch
     │   ├── jsonpointer
     │   ├── jsonschema.exe
+    │   ├── jupyter-dejavu.exe
+    │   ├── jupyter-execute.exe
+    │   ├── jupyter-kernel.exe
+    │   ├── jupyter-kernelspec.exe
+    │   ├── jupyter-migrate.exe
+    │   ├── jupyter-nbconvert.exe
+    │   ├── jupyter-run.exe
+    │   ├── jupyter-troubleshoot.exe
+    │   ├── jupyter-trust.exe
+    │   ├── jupyter.exe
     │   ├── markdown-it.exe
     │   ├── normalizer.exe
     │   ├── numpy-config.exe
@@ -78,9 +100,16 @@
     │   ├── pip.exe
     │   ├── pip3.10.exe
     │   ├── pip3.exe
+    │   ├── pipreqs.exe
     │   ├── pybase64.exe
     │   ├── pygmentize.exe
     │   ├── pyproject-build.exe
+    │   ├── pyrsa-decrypt.exe
+    │   ├── pyrsa-encrypt.exe
+    │   ├── pyrsa-keygen.exe
+    │   ├── pyrsa-priv2pub.exe
+    │   ├── pyrsa-sign.exe
+    │   ├── pyrsa-verify.exe
     │   ├── python.exe
     │   ├── pythonw.exe
     │   ├── tabulate.exe
@@ -93,8 +122,102 @@
     │   ├── watchfiles.exe
     │   ├── websockets.exe
     │   ├── wheel.exe
-    │   └── wsdump.exe
+    │   ├── wsdump.exe
+    │   └── yt-dlp.exe
     └── share
-        └── man
-            └── man1
-                └── isympy.1
+        ├── bash-completion
+        │   └── completions
+        │       └── yt-dlp
+        ├── doc
+        │   └── yt_dlp
+        │       └── README.txt
+        ├── fish
+        │   └── vendor_completions.d
+        │       └── yt-dlp.fish
+        ├── jupyter
+        │   ├── labextensions
+        │   │   └── jupyterlab_pygments
+        │   │       ├── install.json
+        │   │       ├── package.json
+        │   │       └── static
+        │   │           ├── 568.1e2faa2ba0bbe59c4780.js
+        │   │           ├── 747.67662283a5707eeb4d4c.js
+        │   │           ├── remoteEntry.5cbb9d2323598fbda535.js
+        │   │           ├── style.js
+        │   │           └── third-party-licenses.json
+        │   └── nbconvert
+        │       └── templates
+        │           ├── asciidoc
+        │           │   ├── conf.json
+        │           │   └── index.asciidoc.j2
+        │           ├── base
+        │           │   ├── celltags.j2
+        │           │   ├── cell_id_anchor.j2
+        │           │   ├── display_priority.j2
+        │           │   ├── jupyter_widgets.html.j2
+        │           │   ├── mathjax.html.j2
+        │           │   └── null.j2
+        │           ├── basic
+        │           │   ├── conf.json
+        │           │   └── index.html.j2
+        │           ├── classic
+        │           │   ├── base.html.j2
+        │           │   ├── conf.json
+        │           │   ├── index.html.j2
+        │           │   └── static
+        │           │       └── style.css
+        │           ├── compatibility
+        │           │   ├── display_priority.tpl
+        │           │   └── full.tpl
+        │           ├── lab
+        │           │   ├── base.html.j2
+        │           │   ├── conf.json
+        │           │   ├── index.html.j2
+        │           │   ├── mermaidjs.html.j2
+        │           │   └── static
+        │           │       ├── index.css
+        │           │       ├── theme-dark.css
+        │           │       └── theme-light.css
+        │           ├── latex
+        │           │   ├── base.tex.j2
+        │           │   ├── conf.json
+        │           │   ├── display_priority.j2
+        │           │   ├── document_contents.tex.j2
+        │           │   ├── index.tex.j2
+        │           │   ├── null.j2
+        │           │   ├── report.tex.j2
+        │           │   ├── style_bw_ipython.tex.j2
+        │           │   ├── style_bw_python.tex.j2
+        │           │   ├── style_ipython.tex.j2
+        │           │   ├── style_jupyter.tex.j2
+        │           │   └── style_python.tex.j2
+        │           ├── markdown
+        │           │   ├── conf.json
+        │           │   └── index.md.j2
+        │           ├── python
+        │           │   ├── conf.json
+        │           │   └── index.py.j2
+        │           ├── reveal
+        │           │   ├── base.html.j2
+        │           │   ├── cellslidedata.j2
+        │           │   ├── conf.json
+        │           │   ├── index.html.j2
+        │           │   └── static
+        │           │       └── custom_reveal.css
+        │           ├── rst
+        │           │   ├── conf.json
+        │           │   └── index.rst.j2
+        │           ├── script
+        │           │   ├── conf.json
+        │           │   └── script.j2
+        │           └── webpdf
+        │               ├── conf.json
+        │               └── index.pdf.j2
+        ├── man
+        │   └── man1
+        │       ├── ipython.1
+        │       ├── isympy.1
+        │       └── yt-dlp.1
+        └── zsh
+            └── site-functions
+                └── _yt-dlp

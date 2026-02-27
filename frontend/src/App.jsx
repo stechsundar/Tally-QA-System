@@ -9,8 +9,8 @@ import './index.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 
     (window.location.hostname === 'localhost' ? "http://localhost:7860" : "https://tallysundar-tally-ai-backend.hf.space");
-
-    // 1. Detect Label (Subdomain or URL Path)
+ 
+// 1. Detect Label (Subdomain or URL Path)
 const getAppLabel = () => {
     const host = window.location.hostname;
     const pathParts = window.location.pathname.split('/').filter(Boolean);
@@ -27,7 +27,9 @@ const getAppLabel = () => {
 };
 
 // This is your shared logic component (keeps the code small)
-function TallyChatInterface({ brandConfig }) {
+function TallyChatInterface({ brandConfig, label = 'main' }) {
+    // TSS Video button only shown for techsoft subdomain
+    const isTechsoft = label === 'techsoft';
     const [messages, setMessages] = useState([
         {
             role: 'assistant',
@@ -61,8 +63,11 @@ function TallyChatInterface({ brandConfig }) {
         const seen = new Set();
         return sources.filter(s => {
             if (!s?.source) return false;
-            if (seen.has(s.source)) return false;
-            seen.add(s.source);
+
+            const clean = s.source.split('#')[0].split('?')[0].toLowerCase();
+
+            if (seen.has(clean)) return false;
+            seen.add(clean);
             return true;
         });
     };
@@ -87,8 +92,7 @@ function TallyChatInterface({ brandConfig }) {
             const response = await axios.post(`${API_BASE}/ask`, {
                 question: userMsg
             });
-
-            const { short_answer, long_answer, sources } = response.data;
+            const { short_answer, long_answer, sources, watch_video, video_links, tally_video_links } = response.data;
 
             // 3. Push ASSISTANT message (after response exists!)
             setMessages(prev => [
@@ -98,10 +102,15 @@ function TallyChatInterface({ brandConfig }) {
                     shortAnswer: short_answer,
                     longAnswer: long_answer || null,
                     sources: dedupeSources(sources),
+                    watchVideo: watch_video || false,
+                    videoLinks: video_links || [],           // TSS YouTube videos
+                    tallyVideoLinks: tally_video_links || [], // Official Tally videos
                     showLong: false,
                     showSources: false
                 }
             ]);
+            console.log("API RESPONSE:", response.data);
+
         } catch (error) {
             setMessages(prev => [
                 ...prev,
@@ -167,38 +176,57 @@ function TallyChatInterface({ brandConfig }) {
                                     )}
                                 </div>
 
-                                {/* Buttons after short answer - show both if not expanded */}
-                                {msg.role === 'assistant' && !msg.showLong && (msg.longAnswer || msg.sources?.length > 0) && (
-                                    <div className="flex gap-3 mt-4">
+                                {/* Buttons after short answer - show when NOT expanded */}
+                                {msg.role === 'assistant' && !msg.showLong &&
+                                    (msg.longAnswer || msg.sources?.length > 0 || msg.videoLinks?.length > 0 || msg.tallyVideoLinks?.length > 0) && (
+                                    <div className="flex flex-wrap gap-2 mt-4">
+
+                                        {/* Expand detail */}
                                         {msg.longAnswer && (
                                             <button
-                                                onClick={() =>
-                                                    setMessages(prev =>
-                                                        prev.map((m, idx) =>
-                                                            idx === i ? { ...m, showLong: !m.showLong } : m
-                                                        )
-                                                    )
-                                                }
-                                                className="text-xs px-3 py-1 rounded-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-300"
+                                                onClick={() => setMessages(prev =>
+                                                    prev.map((m, idx) => idx === i ? { ...m, showLong: true } : m)
+                                                )}
+                                                className="text-sm md:text-xs px-4 py-2 md:px-3 md:py-1 rounded-full bg-red-600/20 hover:bg-red-600/30 text-red-300 transition-all"
                                             >
                                                 Answer in Detail
                                             </button>
                                         )}
-                                        
+
+                                        {/* View Sources */}
                                         {msg.sources?.length > 0 && (
                                             <button
-                                                onClick={() =>
-                                                    setMessages(prev =>
-                                                        prev.map((m, idx) =>
-                                                            idx === i ? { ...m, showSources: !m.showSources } : m
-                                                        )
-                                                    )
-                                                }
-                                                className="text-xs px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white/70"
+                                                onClick={() => setMessages(prev =>
+                                                    prev.map((m, idx) => idx === i ? { ...m, showSources: !m.showSources } : m)
+                                                )}
+                                                className="text-sm md:text-xs px-4 py-2 md:px-3 md:py-1 rounded-full bg-white/10 hover:bg-white/20 text-white/70 transition-all"
                                             >
                                                 {msg.showSources ? 'Hide Sources' : 'View Sources'}
                                             </button>
                                         )}
+
+                                        {/* TallyPrime Video — official Tally site, shown for ALL subdomains */}
+                                        {msg.tallyVideoLinks?.length > 0 && (
+                                            <button
+                                                onClick={() => window.open(msg.tallyVideoLinks[0].source, "_blank")}
+                                                title={msg.tallyVideoLinks[0].title}
+                                                className="text-sm md:text-xs px-4 py-2 md:px-3 md:py-1 rounded-full bg-blue-700/30 hover:bg-blue-700/50 border border-blue-500/30 text-blue-300 transition-all"
+                                            >
+                                                🎬 TallyPrime Video
+                                            </button>
+                                        )}
+
+                                        {/* TSS Video — only shown for techsoft subdomain */}
+                                        {isTechsoft && msg.videoLinks?.length > 0 && (
+                                            <button
+                                                onClick={() => window.open(msg.videoLinks[0].source, "_blank")}
+                                                title={msg.videoLinks[0].title}
+                                                className="text-sm md:text-xs px-4 py-2 md:px-3 md:py-1 rounded-full bg-red-900/40 hover:bg-red-800/60 border border-red-500/30 text-red-300 transition-all"
+                                            >
+                                                🎥 TSS Video
+                                            </button>
+                                        )}
+
                                     </div>
                                 )}
 
@@ -212,32 +240,46 @@ function TallyChatInterface({ brandConfig }) {
                                         </div>
 
                                         {/* Buttons below detailed answer */}
-                                        <div className="flex gap-3 mt-4">
+                                        <div className="flex flex-wrap gap-2 mt-4">
                                             <button
-                                                onClick={() =>
-                                                    setMessages(prev =>
-                                                        prev.map((m, idx) =>
-                                                            idx === i ? { ...m, showLong: !m.showLong } : m
-                                                        )
-                                                    )
-                                                }
-                                                className="text-xs px-3 py-1 rounded-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-300"
+                                                onClick={() => setMessages(prev =>
+                                                    prev.map((m, idx) => idx === i ? { ...m, showLong: false } : m)
+                                                )}
+                                                className="text-sm md:text-xs px-4 py-2 md:px-3 md:py-1 rounded-full bg-red-600/20 hover:bg-red-600/30 text-red-300 transition-all"
                                             >
                                                 Hide Detail
                                             </button>
 
                                             {msg.sources?.length > 0 && (
                                                 <button
-                                                    onClick={() =>
-                                                        setMessages(prev =>
-                                                            prev.map((m, idx) =>
-                                                                idx === i ? { ...m, showSources: !m.showSources } : m
-                                                            )
-                                                        )
-                                                    }
-                                                    className="text-xs px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white/70"
+                                                    onClick={() => setMessages(prev =>
+                                                        prev.map((m, idx) => idx === i ? { ...m, showSources: !m.showSources } : m)
+                                                    )}
+                                                    className="text-sm md:text-xs px-4 py-2 md:px-3 md:py-1 rounded-full bg-white/10 hover:bg-white/20 text-white/70 transition-all"
                                                 >
                                                     {msg.showSources ? 'Hide Sources' : 'View Sources'}
+                                                </button>
+                                            )}
+
+                                            {/* TallyPrime Video — official, all subdomains */}
+                                            {msg.tallyVideoLinks?.length > 0 && (
+                                                <button
+                                                    onClick={() => window.open(msg.tallyVideoLinks[0].source, "_blank")}
+                                                    title={msg.tallyVideoLinks[0].title}
+                                                    className="text-sm md:text-xs px-4 py-2 md:px-3 md:py-1 rounded-full bg-blue-700/30 hover:bg-blue-700/50 border border-blue-500/30 text-blue-300 transition-all"
+                                                >
+                                                    🎬 TallyPrime Video
+                                                </button>
+                                            )}
+
+                                            {/* TSS Video — techsoft subdomain only */}
+                                            {isTechsoft && msg.videoLinks?.length > 0 && (
+                                                <button
+                                                    onClick={() => window.open(msg.videoLinks[0].source, "_blank")}
+                                                    title={msg.videoLinks[0].title}
+                                                    className="text-sm md:text-xs px-4 py-2 md:px-3 md:py-1 rounded-full bg-red-900/40 hover:bg-red-800/60 border border-red-500/30 text-red-300 transition-all"
+                                                >
+                                                    🎥 TSS Video
                                                 </button>
                                             )}
                                         </div>
@@ -303,11 +345,8 @@ function App() {
     const label = getAppLabel();
     const config = subdomainsData[label] || null;
 
-    // Unified Router:
-    // If we have a custom config for this label, use it.
-    // Otherwise, check for special dashboard routes like 'qa'.
     if (config) {
-        return <TallyChatInterface brandConfig={config} />;
+        return <TallyChatInterface brandConfig={config} label={label} />;
     }
 
     switch (label) {
@@ -315,7 +354,8 @@ function App() {
             return <div className="p-10 text-white font-outfit text-2xl">QA Testing Dashboard</div>;
         case 'main':
         default:
-            return <TallyChatInterface brandConfig={null} />;
-    }}
+            return <TallyChatInterface brandConfig={null} label={label} />;
+    }
+}
 
 export default App;
