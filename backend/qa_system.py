@@ -114,6 +114,66 @@ LONG_ANSWER:
 
     def find_matching_videos(self, question, max_results=3):
         """
+        Simplified high-reliability title matching for a small video set.
+        """
+        if self.vectorstore is None:
+            return []
+
+        # 1. Fetch ALL YouTube videos from the DB (since there are only 10)
+        # k=100 ensures we grab every single video in the category
+        try:
+            all_yt_docs = self.vectorstore.similarity_search(
+                "", k=100, filter={"category": "youtube"}
+            )
+        except Exception:
+            # Fallback if filter is picky
+            all_yt_docs = self.vectorstore.similarity_search("tally", k=100)
+            all_yt_docs = [d for d in all_yt_docs if d.metadata.get("category") == "youtube"]
+
+        # 2. Extract keywords from user question
+        import re
+        clean_q = re.sub(r'[^\w\s]', '', question.lower())
+        keywords = [w for w in clean_q.split() if len(w) > 2 and w not in self.STOP_WORDS]
+        
+        # If no keywords left (e.g. "how to do it"), return nothing to avoid random videos
+        if not keywords:
+            return []
+
+        scored_results = []
+        seen_urls = set()
+
+        # 3. Manual Title Check (The 'Reliability' Engine)
+        for doc in all_yt_docs:
+            url = doc.metadata.get("source", "")
+            if not url or url in seen_urls:
+                continue
+                
+            title = doc.metadata.get("title", "").lower()
+            
+            # Count how many user keywords appear in this specific video title
+            match_count = sum(1 for kw in keywords if kw in title)
+            
+            if match_count > 0:
+                # Calculate a simple score
+                # Bonus: if the keyword "backup" is in the title and user asked for "backup"
+                score = match_count * 10 
+                
+                scored_results.append({
+                    "source": url,
+                    "title": doc.metadata.get("title", ""),
+                    "channel": doc.metadata.get("channel", ""),
+                    "score": score
+                })
+                seen_urls.add(url)
+
+        # 4. Sort by highest match first
+        scored_results.sort(key=lambda x: x["score"], reverse=True)
+        
+        print(f"DEBUG: Found {len(scored_results)} title matches for keywords {keywords}")
+        return scored_results[:max_results]        
+
+    def find_matching_videos_old(self, question, max_results=3):
+        """
         Find YouTube videos relevant to the question using keyword title matching.
 
         WHY NOT similarity_search_with_relevance_scores:
@@ -209,6 +269,7 @@ LONG_ANSWER:
             print(f"  -> {v['title'][:65]}")
         return result
 
+
     def find_tally_videos(self, sources):
         """
         Extract official Tally video links from the documentation sources
@@ -257,44 +318,60 @@ LONG_ANSWER:
         if not self.prompt or not self.llm:
             raise ValueError("QA chain not initialized")
 
-        # Get docs, exclude YouTube from LLM context
-        docs = self.vectorstore.similarity_search(question, k=15)
-        doc_context = [d for d in docs if d.metadata.get("category") != "youtube"]
-        context = self._format_docs(doc_context)
+        try:
+            # Get docs, exclude YouTube from LLM context
+            docs = self.vectorstore.similarity_search(question, k=15)
+            doc_context = [d for d in docs if d.metadata.get("category") != "youtube"]
+            context = self._format_docs(doc_context)
 
-        # Generate answer
-        chain = self.prompt | self.llm | StrOutputParser()
-        raw = chain.invoke({"context": context, "question": question})
+            # Generate answer
+            chain = self.prompt | self.llm | StrOutputParser()
+            raw = chain.invoke({"context": context, "question": question})
+            print(f"LLM raw response length: {len(raw)}")
 
-        # Parse SHORT / LONG
-        if "SHORT_ANSWER:" in raw and "LONG_ANSWER:" in raw:
-            short = raw.split("SHORT_ANSWER:")[1].split("LONG_ANSWER:")[0].strip()
-            long = raw.split("LONG_ANSWER:")[1].strip()
-        else:
-            short = raw[:300]
-            long = raw
+            # Parse SHORT / LONG
+            if "SHORT_ANSWER:" in raw and "LONG_ANSWER:" in raw:
+                short = raw.split("SHORT_ANSWER:")[1].split("LONG_ANSWER:")[0].strip()
+                long  = raw.split("LONG_ANSWER:")[1].strip()
+            else:
+                short = raw[:300]
+                long  = raw
 
-        # Documentation sources only
-        sources = [
-            {"title": d.metadata.get("title", ""), "source": d.metadata.get("source", "")}
-            for d in doc_context
-            if not d.metadata.get("source", "").startswith("https://www.youtube.com")
-        ]
+            # Documentation sources only
+            sources = [
+                {"title": d.metadata.get("title", ""), "source": d.metadata.get("source", "")}
+                for d in doc_context
+                if not d.metadata.get("source", "").startswith("https://www.youtube.com")
+            ]
 
-        # 5. Matching TSS YouTube videos
-        video_links = self.find_matching_videos(question, max_results=3)
+            # TSS YouTube videos (techsoft subdomain only on frontend)
+            try:
+                video_links = self.find_matching_videos(question, max_results=3)
+            except Exception as e:
+                print(f"WARNING: find_matching_videos failed: {e}")
+                video_links = []
 
-        # 6. Official Tally videos from documentation sources
-        tally_video_links = self.find_tally_videos(sources)
+            # Official Tally videos from sources
+            try:
+                tally_video_links = self.find_tally_videos(sources)
+            except Exception as e:
+                print(f"WARNING: find_tally_videos failed: {e}")
+                tally_video_links = []
 
-        return {
-            "short_answer":      short,
-            "long_answer":       long,
-            "sources":           sources,
-            "watch_video":       len(video_links) > 0,
-            "video_links":       video_links,
-            "tally_video_links": tally_video_links,
-        }
+            return {
+                "short_answer":      short,
+                "long_answer":       long,
+                "sources":           sources,
+                "watch_video":       len(video_links) > 0,
+                "video_links":       video_links,
+                "tally_video_links": tally_video_links,
+            }
+
+        except Exception as e:
+            import traceback
+            print(f"ERROR in ask(): {e}")
+            traceback.print_exc()
+            raise
 
     # ------------------ UTILS ------------------
 

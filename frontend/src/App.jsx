@@ -17,6 +17,26 @@ const getAppLabel = () => {
     const path = pathParts[0];
     const parts = host.split('.');
 
+    // Priority 1: URL Path (e.g., localhost:5173/techsoft)
+    if (path && path.length > 1) return path.toLowerCase();
+
+    // Priority 2: Localhost Subdomain (e.g., techsoft.localhost)
+    if (host.includes('localhost') && parts.length >= 2 && parts[0] !== 'localhost') {
+        return parts[0].toLowerCase();
+    }
+
+    // Priority 3: Production Subdomain (e.g., techsoft.apps-technologies.shop)
+    if (parts.length > 2) return parts[0].toLowerCase();
+
+    return 'main';
+};
+
+const getAppLabelOld = () => {
+    const host = window.location.hostname;
+    const pathParts = window.location.pathname.split('/').filter(Boolean);
+    const path = pathParts[0];
+    const parts = host.split('.');
+
     // Priority 1: URL Path (for localhost testing)
     if (path && path.length > 1) return path.toLowerCase();
 
